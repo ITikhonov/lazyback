@@ -148,21 +148,10 @@
 
 	If changed, writes full path to changelog.
 
+	First, we scan whole directory and check all files.
 
-=>main-enqueue.c
--#include <fcntl.h>
--#include <unistd.h>
--#include <dirent.h>
--#include <string.h>
--#include <stdint.h>
-
--#undef NDEBUG
--#include <assert.h>
-
--static int rl,wl;
--static off_t cursor;
-
--void process_files(off_t start) {
+=enqueue_process_dir
+-void process_dir(off_t start) {
 -	static char path[PATH_MAX];
 -	getcwd(path,sizeof(path));
 
@@ -187,7 +176,20 @@
 -	}
 -}
 
--void process_dirs(off_t start,int ignore) {
+	Then, we scan whole directory again, and only process directories
+	by descending into them.
+
+	Trick is in a separate cursor variable, which tracks offset of
+	not yet processed directories.
+
+	Also, if we can't descend into directory (due to it being removed
+	or permission changes) we still go through all subdirectories to
+	advance cursor (see 'ignore' parameter).
+
+=descend_into_subdirs
+-static off_t cursor;
+
+-void descend_into_subdirs(off_t start,int ignore) {
 -	static char name[NAME_MAX];
 -	lseek(rl,start,SEEK_SET);
 -	uint32_t len;
@@ -211,8 +213,8 @@
 -				printf("%c %s/%s\n",ignore?'I':'D',path,name);
 -			}
 -			off_t pos=lseek(rl,0,SEEK_CUR);
--			if(!ignore) process_files(cursor);
--			process_dirs(cursor,ignore);
+-			if(!ignore) process_dir(cursor);
+-			descend_into_subdirs(cursor,ignore);
 -			if(!ignore) chdir("..");
 -			lseek(rl,pos,SEEK_SET);
 -		}
@@ -221,6 +223,22 @@
 -}
 
 
+
+
+=>main-enqueue.c
+-#include <fcntl.h>
+-#include <unistd.h>
+-#include <dirent.h>
+-#include <string.h>
+-#include <stdint.h>
+
+-#undef NDEBUG
+-#include <assert.h>
+
+-static int rl,wl;
+
+>enqueue_process_dir
+>descend_into_subdirs
 
 -int main(int argc, char *argv[]) {
 -	if(argc!=4) {
@@ -233,8 +251,8 @@
 -	chdir(argv[1]);
 
 -	cursor=0;
--	process_files(0);
--	process_dirs(0,0);
+-	process_dir(0);
+-	descend_into_subdirs(0,0);
 -}
 
 
