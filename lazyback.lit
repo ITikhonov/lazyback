@@ -19,8 +19,8 @@
 
 		List In
 
-	Program lb-list-in traverse directories and writes filenames into
-	list file.
+	Program lb-list-in traverse directories and writes filenames, filesizes,
+	mtime and ctime into list file.
 
 	At the beginning it starts with / with content:
 
@@ -47,9 +47,25 @@
 -			if(l==1) continue;
 -			if(l==2 && d->d_name[1]=='.') continue;
 -		}
--		len+=l+4;
+
+-		struct stat st;
+-		lstat(d->d_name,&st);
+-		if(st.st_dev != fs) continue;
+
+-		len+=l+20;
 -		if(d->d_type==DT_DIR) l|=0x80000000;
+
+-		uint32_t x;
+-		uint64_t y;
+
 -		write(wl,&l,4);
+
+-		y=st.st_size;
+-		write(wl,&y,8);
+-		x=st.st_mtime;
+-		write(wl,&x,4);
+-		x=st.st_ctime;
+-		write(wl,&x,4);
 -		write(wl,d->d_name,l&0x7fffffff);
 -	}
 -	closedir(p);
@@ -70,30 +86,25 @@
 -		int isdir;
 -		uint32_t l;
 -		read(rl,&l,4);
+-		lseek(rl,16,SEEK_CUR);
 -		isdir=l&0x80000000;
 -		l&=0x7fffffff;
 -		read(rl,name,l);
 -		name[l]=0;
+
+
 -		if(isdir) {
 -			if(chdir(name)==0) {
 -				off_t pos=lseek(rl,0,SEEK_CUR);
 
--				if(getfs()==fs) process_dir(write_dir());
+-				process_dir(write_dir());
 
 -				lseek(rl,pos,SEEK_SET);
 -				chdir("..");
 -			}
 -		}
--		len-=l+4;
+-		len-=l+20;
 -	}
--}
-
-
-=getfs
--dev_t getfs(void) {
--	struct stat st;
--	lstat(".",&st);
--	return st.st_dev;
 -}
 
 
@@ -107,7 +118,6 @@
 -static int rl,wl;
 -static dev_t fs;
 
->getfs
 >write_dir
 >process_dir
 
@@ -120,11 +130,23 @@
 -	wl=open(argv[2],O_CREAT|O_TRUNC|O_WRONLY,0664);
 -	rl=open(argv[2],O_RDONLY,0664);
 
--	fs=getfs();
+-	struct stat st;
+-	lstat(".",&st);
+-	fs=st.st_dev;
 -	chdir(argv[1]);
 -	
 -	process_dir(write_dir());
 
 -	return 0;
 -}
+
+
+		Enqueue
+
+	Goes through list file, checks filesize, mtime and ctime
+	of actual file against listed.
+
+	If changed, writes full path to changelog.
+
+
 
