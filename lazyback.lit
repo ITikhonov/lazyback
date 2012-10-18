@@ -53,7 +53,7 @@
 -		if(st.st_dev != fs) continue;
 
 -		len+=l+20;
--		if(d->d_type==DT_DIR) l|=0x80000000;
+-		if(S_ISDIR(st.st_mode)) l|=0x80000000;
 
 -		uint32_t x;
 -		uint64_t y;
@@ -114,6 +114,7 @@
 -#include <dirent.h>
 -#include <string.h>
 -#include <stdint.h>
+-#include <sys/stat.h>
 
 -static int rl,wl;
 -static dev_t fs;
