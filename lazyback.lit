@@ -31,10 +31,14 @@
 		etc
 		home
 
-	It simply writes all names to list file and marks which are directories.
+	It simply writes all names to list file and marks which are directories. This data
+	is prefixed by that data length.
 
 =write_dir
--void write_dir() {
+-off_t write_dir(void) {
+-	off_t start=lseek(wl,0,SEEK_CUR);
+-	uint32_t len=0;
+-	write(wl,&len,4);
 -	DIR *p=opendir(".");
 -	struct dirent *d;
 -	for(;(d=readdir(p));) {
@@ -43,50 +47,54 @@
 -			if(l==1) continue;
 -			if(l==2 && d->d_name[1]=='.') continue;
 -		}
+-		len+=l+4;
 -		if(d->d_type==DT_DIR) l|=0x80000000;
 -		write(wl,&l,4);
 -		write(wl,d->d_name,l&0x7fffffff);
 -	}
 -	closedir(p);
--	const uint32_t z=0;
--	write(wl,&z,4);
+-	pwrite(wl,&len,4,start);
+-	return start;
 -}
 
-	Then it seeks back in list file and read names again. First is bin.
-
-		ls
-		find
-		rm
-		subdir
+	Then it seeks back in a list file, read names and recursively
+	descends into directories.
 
 =process_dir
--off_t stack[1024];
--int depth;
--void process_dir() {
+-void process_dir(off_t start) {
 -	static char name[NAME_MAX];
--	int isdir;
--	for(;;) {
+-	lseek(rl,start,SEEK_SET);
+-	uint32_t len;
+-	read(rl,&len,4);
+-	for(;len;) {
+-		int isdir;
 -		uint32_t l;
 -		read(rl,&l,4);
--		if(l==0) return;
 -		isdir=l&0x80000000;
 -		l&=0x7fffffff;
 -		read(rl,name,l);
+-		name[l]=0;
 -		if(isdir) {
--			name[l]=0;
--
--			stack[depth++]=lseek(rl,0,SEEK_CUR);
--			lseek(rl,lseek(wl,0,SEEK_CUR),SEEK_SET);
--			chdir(name);
--			write_dir();
--			process_dir();
--			chdir("..");
--			lseek(rl,stack[--depth],SEEK_SET);
+-			if(chdir(name)==0) {
+-				off_t pos=lseek(rl,0,SEEK_CUR);
+
+-				if(getfs()==fs) process_dir(write_dir());
+
+-				lseek(rl,pos,SEEK_SET);
+-				chdir("..");
+-			}
 -		}
+-		len-=l+4;
 -	}
 -}
 
-	
+
+=getfs
+-dev_t getfs(void) {
+-	struct stat st;
+-	lstat(".",&st);
+-	return st.st_dev;
+-}
 
 
 =>main.c
@@ -97,17 +105,25 @@
 -#include <stdint.h>
 
 -static int rl,wl;
+-static dev_t fs;
 
+>getfs
 >write_dir
 >process_dir
 
--int main(void) {
--	wl=open("list",O_CREAT|O_TRUNC|O_WRONLY,0664);
--	rl=open("list",O_RDONLY,0664);
+-int main(int argc, char *argv[]) {
+-	if(argc!=3) {
+-		char usage[]="Usage: lazyback / list\n\n";
+-		write(1,usage,sizeof(usage));
+-		return 1;
+-	}
+-	wl=open(argv[2],O_CREAT|O_TRUNC|O_WRONLY,0664);
+-	rl=open(argv[2],O_RDONLY,0664);
 
--	depth=0;
--	write_dir();
--	process_dir();
+-	fs=getfs();
+-	chdir(argv[1]);
+-	
+-	process_dir(write_dir());
 
 -	return 0;
 -}
