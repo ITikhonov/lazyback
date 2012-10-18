@@ -16,6 +16,14 @@
 
 	Program lb-backup actually transfer files to archive.
 
+		Be Lazy
+
+	Common to all utilities is low impact on system.
+
+=belazy
+-void belazy(void) {
+-}
+
 
 		List In
 
@@ -164,14 +172,24 @@
 -		int isdir;
 -		uint32_t l;
 -		read(rl,&l,4);
--		lseek(rl,16,SEEK_CUR);
+
+-		uint32_t mt,ct;
+-		uint64_t size;
+		
+-		read(rl,&size,8);
+-		read(rl,&mt,4);
+-		read(rl,&ct,4);
+
 -		isdir=l&0x80000000;
 -		l&=0x7fffffff;
 -		read(rl,name,l);
 -		name[l]=0;
 
--		if(!isdir) {
--			printf("F %s/%s\n",path,name);
+-		struct stat st;
+-		lstat(name,&st);
+
+-		if(st.st_mtime!=mt || st.st_ctime!=ct || st.st_size!=size) {
+-			printf("C %s/%s%s\n",path,name,isdir?"/":"");
 -		}
 -		len-=l+20;
 -	}
@@ -207,11 +225,13 @@
 -		name[l]=0;
 
 -		if(isdir) {
--			static char path[PATH_MAX];
 -			if(!ignore) {
 -				ignore=chdir(name);
--				getcwd(path,sizeof(path));
--				printf("%c %s/%s\n",ignore?'I':'D',path,name);
+-				if(ignore) {
+-					static char path[PATH_MAX];
+-					getcwd(path,sizeof(path));
+-					printf("R %s/%s\n",path,name);
+-				}
 -			}
 -			off_t pos=lseek(rl,0,SEEK_CUR);
 -			if(!ignore) process_dir(cursor);
