@@ -1,0 +1,114 @@
+
+		Lazy Backup
+
+	The very idea is to backup everything that is not from
+	distro packages.
+
+	And do that continiously while system is running.
+
+	Lazy Backup consists of several parts.
+
+	Program lb-list-in continiously scans filesystem and prepare list
+	of files that should be backed up.
+
+	Program lb-enqueue continiously scans thouse files and prepare
+	list of files that are not backed up yet.
+
+	Program lb-backup actually transfer files to archive.
+
+
+		List In
+
+	Program lb-list-in traverse directories and writes filenames into
+	list file.
+
+	At the beginning it starts with / with content:
+
+		bin
+		boot
+		cimplyfile
+		dev
+		etc
+		home
+
+	It simply writes all names to list file and marks which are directories.
+
+=write_dir
+-void write_dir() {
+-	DIR *p=opendir(".");
+-	struct dirent *d;
+-	for(;(d=readdir(p));) {
+-		uint32_t l=strlen(d->d_name);
+-		if(d->d_name[0]=='.') {
+-			if(l==1) continue;
+-			if(l==2 && d->d_name[1]=='.') continue;
+-		}
+-		if(d->d_type==DT_DIR) l|=0x80000000;
+-		write(wl,&l,4);
+-		write(wl,d->d_name,l&0x7fffffff);
+-	}
+-	closedir(p);
+-	const uint32_t z=0;
+-	write(wl,&z,4);
+-}
+
+	Then it seeks back in list file and read names again. First is bin.
+
+		ls
+		find
+		rm
+		subdir
+
+=process_dir
+-off_t stack[1024];
+-int depth;
+-void process_dir() {
+-	static char name[NAME_MAX];
+-	int isdir;
+-	for(;;) {
+-		uint32_t l;
+-		read(rl,&l,4);
+-		if(l==0) return;
+-		isdir=l&0x80000000;
+-		l&=0x7fffffff;
+-		read(rl,name,l);
+-		if(isdir) {
+-			name[l]=0;
+-
+-			stack[depth++]=lseek(rl,0,SEEK_CUR);
+-			lseek(rl,lseek(wl,0,SEEK_CUR),SEEK_SET);
+-			chdir(name);
+-			write_dir();
+-			process_dir();
+-			chdir("..");
+-			lseek(rl,stack[--depth],SEEK_SET);
+-		}
+-	}
+-}
+
+	
+
+
+=>main.c
+-#include <fcntl.h>
+-#include <unistd.h>
+-#include <dirent.h>
+-#include <string.h>
+-#include <stdint.h>
+
+-static int rl,wl;
+
+>write_dir
+>process_dir
+
+-int main(void) {
+-	wl=open("list",O_CREAT|O_TRUNC|O_WRONLY,0664);
+-	rl=open("list",O_RDONLY,0664);
+
+-	depth=0;
+-	write_dir();
+-	process_dir();
+
+-	return 0;
+-}
+
