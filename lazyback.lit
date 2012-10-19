@@ -18,10 +18,11 @@
 
 		Be Lazy
 
-	Common to all utilities is low impact on system.
+	Common to all utilities is low impact on system. This is done
+	by inserting sleep...
 
-=belazy
--void belazy(void) {
+=be_lazy
+-void be_lazy(void) {
 -}
 
 
@@ -276,4 +277,108 @@
 -	descend_into_subdirs(0,0);
 -}
 
+
+
+
+		Making dpkg-ignore List
+
+	Each inode in a list represented by one byte at
+	inode number offset.
+
+=process_file
+-void process_file(char *name) {
+-	struct stat st;
+-	lstat(name,&st);
+-	if(fs!=st.st_dev) return;
+-	if(!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) return;
+-
+-	pwrite(wl,"\1",1,st.st_ino);
+-}
+
+	Ignore list is prepared from md5 listings. Program
+	lazyback-dpkg-ignore scans through all .md5sums
+	files in a directory and marks inodes which are
+	present.
+
+=process_list
+-void process_list(char *name) {
+-	int f=open(name,O_RDONLY);
+-	chdir("/");
+
+-	static char buf[PATH_MAX+34]; // 32 md5 + space + newline
+
+-	char *p=buf;
+-	int r=read(f,buf,sizeof(buf));
+-	char *e=buf+r;
+-	char *E=buf+sizeof(buf);
+
+-	for(;;) {
+-		int n=e-p;
+-		char *nl=memchr(p,'\n',n);
+-		if(!nl) {
+-			memmove(buf,p,n);
+-			p=buf;
+-			e=buf+n;
+
+-			int r=read(f,e,E-e);
+-			if(r<=0) break;
+-			e+=r;
+
+-			continue;
+-		}
+-
+-		*nl=0;
+-		p[32]=0;
+-		process_file(p+34);
+-		p=nl+1;
+-	}
+-	close(f);
+-}
+
+
+	Also you need to provide directory to be backed up
+	as program ignore files which are not on backup
+	filesystem.
+
+
+=>main-dpkg-ignore.c
+-#include <fcntl.h>
+-#include <unistd.h>
+-#include <dirent.h>
+-#include <string.h>
+-#include <sys/stat.h>
+
+-static int wl;
+-static dev_t fs;
+
+>process_file
+>process_list
+
+-int main(int argc, char *argv[]) {
+-	if(argc!=4) {
+-		char usage[]="Usage: lazyback-dpkg-ignore / /var/lib/dpkg/info ignore\n\n";
+-		write(1,usage,sizeof(usage));
+-		return 1;
+-	}
+-	wl=open(argv[3],O_CREAT|O_TRUNC|O_WRONLY,0664);
+
+-	struct stat st;
+-	lstat(argv[1],&st);
+-	fs=st.st_dev;
+
+-	DIR *p=opendir(argv[2]);
+-	struct dirent *d;
+-	for(;(d=readdir(p));) {
+-		int l=strlen(d->d_name);
+-		if(l<8) continue;
+-		if(strncmp(d->d_name+l-7,".md5sum",7)==0) {
+-			chdir(argv[2]);
+-			process_list(d->d_name);
+-		}
+-	}
+-	closedir(p);
+
+-	close(wl);
+-	
+-}
 
